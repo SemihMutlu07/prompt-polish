@@ -83,5 +83,34 @@ Env var override: `POLISH_API_KEY`, `POLISH_BASE_URL`, `POLISH_MODEL`. OpenAI-uy
 ## Test
 
 ```bash
-python3 test_polish.py   # ağ gerektirmeyen 6 kontrol
+python3 test_polish.py   # ağ gerektirmeyen 15 kontrol (motor + adapter)
 ```
+
+## Otomatik hook (Claude Code / Codex / Hermes)
+
+CLI'ı elle çağırmak yerine, harness'in prompt akışına otomatik bağlanabilirsin:
+
+```bash
+./install.sh           # kurulu harness'leri tespit eder, snippet basar
+./install.sh --apply   # Claude Code + Codex config'lerine otomatik ekler (yedekli)
+```
+
+Hermes YAML dosyasına otomatik yazılmaz (format riski), `--apply` çıktısındaki
+snippet'i `~/.hermes/config.yaml`'a elle eklemen gerekir.
+
+**Nasıl çalışır:** `adapters/polish-hook.py` üç harness'in de hook JSON'unu
+stdin'den okur, prompt'u çıkarır, `polish.py --hook` ile motoru çağırır, kartı
+`/dev/tty`'ye basar (terminalde anında görünür) ve revised versiyonu context
+olarak enjekte eder — Claude Code/Codex plain stdout, Hermes `{"context": ...}`
+JSON.
+
+**Önemli sınır:** Hiçbir harness'in hook sistemi kullanıcının promptunu
+sessizce değiştiremiyor (resmi Claude Code docs bunu doğruluyor — sadece context
+eklenebilir veya submission tamamen bloklanabilir). Bu yüzden gerçek bir "swap"
+değil, LLM'e "kullanıcının orijinal + daha akıcı versiyonu — revised'ı esas al"
+diyen bir not ekleniyor. Davranışsal olarak swap'a denk, teknik olarak değil.
+
+Devre dışı bırakmak için: `POLISH_HOOK_DISABLE=1` env var (kalıcı olarak
+istersen shell rc'ne ekle). `/` ile başlayan slash command'lar zaten otomatik
+atlanır. Her hook çağrısı ~1-2 sn gecikme ekler; API hatası/timeout'ta sessizce
+geçilir (fail-open, prompt asla bloklanmaz).

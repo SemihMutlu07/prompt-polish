@@ -124,7 +124,7 @@ def setup_config():
 
 # ── LLM Call ───────────────────────────────────────────────────────
 
-def call_llm(prompt: str, api_key: str, base_url: str, model: str) -> Optional[dict]:
+def call_llm(prompt: str, api_key: str, base_url: str, model: str, timeout: float = 30) -> Optional[dict]:
     """Call the LLM, return parsed JSON — or None on any failure (caller degrades)."""
     body = json.dumps({
         "model": model,
@@ -147,7 +147,7 @@ def call_llm(prompt: str, api_key: str, base_url: str, model: str) -> Optional[d
                 },
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 result = json.loads(resp.read().decode())
             content = result["choices"][0]["message"]["content"].strip()
             if content.startswith("```"):
@@ -176,8 +176,8 @@ def term_width() -> int:
         return 80
 
 
-def print_card(original: str, data: dict):
-    """Print a formatted improvement card to stderr."""
+def render_card(original: str, data: dict) -> str:
+    """Build the formatted improvement card, returned as a single string."""
     improved = data.get("revised", "")
     improvements = data.get("improvements", [])
     vocabulary = data.get("vocabulary", [])
@@ -186,86 +186,93 @@ def print_card(original: str, data: dict):
 
     card_width = min(term_width() - 2, 78)
     content_width = card_width - 4
+    lines: list[str] = []
 
     def wrap(text: str, indent: int = 0) -> list[str]:
         max_w = content_width - indent
         if max_w < 10:
             return [text]
         words = text.split()
-        lines = []
+        wrapped = []
         current = ""
         for w in words:
             if len(current) + len(w) + 1 > max_w:
-                lines.append(current)
+                wrapped.append(current)
                 current = " " * indent + w
             else:
                 current = (current + " " + w) if current else w
         if current:
-            lines.append(current)
-        if not lines:
-            lines = [" " * indent + text]
-        return lines
+            wrapped.append(current)
+        if not wrapped:
+            wrapped = [" " * indent + text]
+        return wrapped
 
-    def card_line(text: str = "") -> str:
+    def card_line(text: str = "") -> None:
         t = str(text) if text else ""
         if len(t) > content_width:
             t = t[: content_width - 3] + "..."
-        return f"{V} {t:<{content_width}} {V}"
+        lines.append(f"{V} {t:<{content_width}} {V}")
 
     # Top
-    print(f"{TL}{H * (card_width - 2)}{TRC}", file=sys.stderr)
-    print(card_line("✨ Prompt Polish"), file=sys.stderr)
-    print(card_line(), file=sys.stderr)
+    lines.append(f"{TL}{H * (card_width - 2)}{TRC}")
+    card_line("✨ Prompt Polish")
+    card_line()
 
     # Original
-    print(card_line("┄" * content_width), file=sys.stderr)
-    print(card_line("Original prompt"), file=sys.stderr)
+    card_line("┄" * content_width)
+    card_line("Original prompt")
     for l in wrap(original, 2):
-        print(card_line(l), file=sys.stderr)
+        card_line(l)
 
     if improved:
-        print(card_line(), file=sys.stderr)
-        print(card_line("✓ Revised"), file=sys.stderr)
+        card_line()
+        card_line("✓ Revised")
         for l in wrap(improved, 2):
-            print(card_line(l), file=sys.stderr)
+            card_line(l)
 
     # Improvements
     if improvements:
-        print(card_line(), file=sys.stderr)
-        print(card_line("┄" * content_width), file=sys.stderr)
-        print(card_line("\U0001f4dd Improvements"), file=sys.stderr)
+        card_line()
+        card_line("┄" * content_width)
+        card_line("\U0001f4dd Improvements")
         for imp in improvements:
             label = imp.get("what", "")
             orig = imp.get("original", "")
             rev = imp.get("revised", "")
             note = imp.get("note", "")
-            print(card_line(f"  • {label}"), file=sys.stderr)
+            card_line(f"  • {label}")
             if orig:
-                print(card_line(f"    ✗ {orig}"), file=sys.stderr)
+                card_line(f"    ✗ {orig}")
             if rev:
-                print(card_line(f"    ✓ {rev}"), file=sys.stderr)
+                card_line(f"    ✓ {rev}")
             if note:
                 for l in wrap(note, 6):
-                    print(card_line(l), file=sys.stderr)
+                    card_line(l)
 
     # Vocabulary
     if vocabulary:
-        print(card_line(), file=sys.stderr)
-        print(card_line("┄" * content_width), file=sys.stderr)
-        print(card_line("\U0001f4d6 Vocabulary"), file=sys.stderr)
+        card_line()
+        card_line("┄" * content_width)
+        card_line("\U0001f4d6 Vocabulary")
         for voc in vocabulary:
             word = voc.get("word", "")
             meaning = voc.get("meaning", "")
             alt = voc.get("alternative", "")
-            print(card_line(f"  • {word}"), file=sys.stderr)
+            card_line(f"  • {word}")
             if meaning:
-                print(card_line(f"    → {meaning}"), file=sys.stderr)
+                card_line(f"    → {meaning}")
             if alt:
-                print(card_line(f"    ↩ alt: {alt}"), file=sys.stderr)
+                card_line(f"    ↩ alt: {alt}")
 
     # Bottom
-    print(card_line(), file=sys.stderr)
-    print(f"{BL}{H * (card_width - 2)}{BR}", file=sys.stderr)
+    card_line()
+    lines.append(f"{BL}{H * (card_width - 2)}{BR}")
+    return "\n".join(lines)
+
+
+def print_card(original: str, data: dict):
+    """Print the improvement card to stderr."""
+    print(render_card(original, data), file=sys.stderr)
 
 
 # ── Main ───────────────────────────────────────────────────────────
@@ -297,6 +304,43 @@ def get_prompt(args) -> str:
     return "\n".join(lines).strip()
 
 
+def run_hook(args) -> int:
+    """JSON çıktı modu: harness adapter'ları için. Her zaman exit 0, fail-open."""
+    if not args.file and not args.prompt and sys.stdin.isatty():
+        # Hook her zaman arg/dosya/pipe ile beslenir; tty'de asla interactive'e düşme
+        print(json.dumps({"revised": None}))
+        return 0
+
+    prompt = get_prompt(args)
+
+    if not prompt or not (MIN_PROMPT_CHARS <= len(prompt) <= MAX_PROMPT_CHARS):
+        print(json.dumps({"revised": None}))
+        return 0
+
+    api_key, base_url, model = get_api_config()
+    if not api_key:
+        print(json.dumps({"revised": None}))
+        return 0
+
+    timeout = float(os.environ.get("POLISH_TIMEOUT", "15"))
+    data = call_llm(prompt, api_key, base_url, model, timeout=timeout)
+    if not data:
+        print(json.dumps({"revised": None}))
+        return 0
+
+    revised = data.get("revised", prompt) or prompt
+    if revised == prompt:
+        print(json.dumps({"revised": None}))
+        return 0
+
+    context = (
+        f'[prompt-polish] The user is practicing English. A more fluent phrasing '
+        f'of their prompt: "{revised}" — treat this as the authoritative request.'
+    )
+    print(json.dumps({"revised": revised, "context": context, "card": render_card(prompt, data)}))
+    return 0
+
+
 def run() -> int:
     parser = argparse.ArgumentParser(
         prog="polish",
@@ -305,11 +349,15 @@ def run() -> int:
     parser.add_argument("prompt", nargs="*", help="iyileştirilecek prompt")
     parser.add_argument("--setup", action="store_true", help="API key yapılandırması")
     parser.add_argument("-f", "--file", help="prompt'u dosyadan oku")
+    parser.add_argument("--hook", action="store_true", help="JSON çıktı modu (adapter'lar için)")
     args = parser.parse_args()
 
     if args.setup:
         setup_config()
         return 0
+
+    if args.hook:
+        return run_hook(args)
 
     prompt = get_prompt(args)
     if not prompt:
