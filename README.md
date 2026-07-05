@@ -86,7 +86,7 @@ Env var override: `POLISH_API_KEY`, `POLISH_BASE_URL`, `POLISH_MODEL`. OpenAI-uy
 python3 test_polish.py   # ağ gerektirmeyen 15 kontrol (motor + adapter)
 ```
 
-## Otomatik hook (Claude Code / Codex / Hermes)
+## Otomatik hook (Claude Code / Codex / Hermes / AGY)
 
 CLI'ı elle çağırmak yerine, harness'in prompt akışına otomatik bağlanabilirsin:
 
@@ -98,17 +98,25 @@ CLI'ı elle çağırmak yerine, harness'in prompt akışına otomatik bağlanabi
 Hermes YAML dosyasına otomatik yazılmaz (format riski), `--apply` çıktısındaki
 snippet'i `~/.hermes/config.yaml`'a elle eklemen gerekir.
 
-**Nasıl çalışır:** `adapters/polish-hook.py` üç harness'in de hook JSON'unu
+### Nasıl çalışır
+
+**Claude Code / Codex:** `adapters/polish-hook.py` harness'in hook JSON'unu
 stdin'den okur, prompt'u çıkarır, `polish.py --hook` ile motoru çağırır, kartı
 `/dev/tty`'ye basar (terminalde anında görünür) ve revised versiyonu context
-olarak enjekte eder — Claude Code/Codex plain stdout, Hermes `{"context": ...}`
-JSON.
+olarak enjekte eder — plain stdout.
 
-**Önemli sınır:** Hiçbir harness'in hook sistemi kullanıcının promptunu
-sessizce değiştiremiyor (resmi Claude Code docs bunu doğruluyor — sadece context
-eklenebilir veya submission tamamen bloklanabilir). Bu yüzden gerçek bir "swap"
-değil, LLM'e "kullanıcının orijinal + daha akıcı versiyonu — revised'ı esas al"
-diyen bir not ekleniyor. Davranışsal olarak swap'a denk, teknik olarak değil.
+**Hermes / AGY:** Hook sistemi kullanmak yerine, Prompt Polish talimatları
+sistem prompt'una (GEMINI.md, AGENTS.md, config.yaml) gömülür. Ajan kendi
+kendine İngilizce düzeltmesi yapar, ek API call gerekmez — daha token-verimli.
+AGY için: `~/.gemini/GEMINI.md`'ye Prompt Polish bölümünü elle ekle.
+
+### Önemli sınır
+
+Hiçbir harness'in hook sistemi kullanıcının promptunu sessizce değiştiremiyor
+(resmi Claude Code docs bunu doğruluyor — sadece context eklenebilir veya
+submission tamamen bloklanabilir). Bu yüzden gerçek bir "swap" değil, LLM'e
+"kullanıcının orijinal + daha akıcı versiyonu — revised'ı esas al" diyen bir
+not ekleniyor. Davranışsal olarak swap'a denk, teknik olarak değil.
 
 Devre dışı bırakmak için: `POLISH_HOOK_DISABLE=1` env var (kalıcı olarak
 istersen shell rc'ne ekle). `/` ile başlayan slash command'lar zaten otomatik
