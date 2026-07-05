@@ -1,6 +1,11 @@
 # prompt-polish
 
-AI kullanırken İngilizceni geliştiren terminal aracı.
+[![CI](https://github.com/SemihMutlu07/prompt-polish/actions/workflows/ci.yml/badge.svg)](https://github.com/SemihMutlu07/prompt-polish/actions)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![GitHub stars](https://img.shields.io/github/stars/SemihMutlu07/prompt-polish)]()
+
+AI kullanırken İngilizceni geliştiren terminal aracı. **Zero-dependency, Claude Code/Codex/AGY hook integration, claude -p fallback (no API key needed).**
 
 Prompt engineering asistanı değil, dil öğrenme arkadaşı: AI'a göndereceğin prompt'u alır, daha akıcı İngilizce versiyonunu, yapılan düzeltmelerin Türkçe açıklamalarını ve 1-2 kelimelik mini vocabulary kartını gösterir. Kartı okursun, dilin gelişir, sonra AI cevabını alırsın.
 
