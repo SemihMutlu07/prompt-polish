@@ -125,7 +125,7 @@ def setup_config():
 # ── LLM Call ───────────────────────────────────────────────────────
 
 def call_llm(prompt: str, api_key: str, base_url: str, model: str, timeout: float = 30) -> Optional[dict]:
-    """Call the LLM, return parsed JSON — or None on any failure (caller degrades)."""
+    """Call the LLM via HTTP (OpenRouter/OpenAI), return parsed JSON — or None on any failure."""
     body = json.dumps({
         "model": model,
         "messages": [
@@ -160,11 +160,31 @@ def call_llm(prompt: str, api_key: str, base_url: str, model: str, timeout: floa
                 continue
             print(f"⚠️  API error: HTTP {e.code}", file=sys.stderr)
             return None
-        # ValueError covers bozuk base_url ve bozuk JSON (JSONDecodeError)
         except (urllib.error.URLError, TimeoutError, ValueError, KeyError, IndexError) as e:
             print(f"⚠️  API error: {e}", file=sys.stderr)
             return None
     return None
+
+
+def call_claude(prompt: str, timeout: float = 30) -> Optional[dict]:
+    """Call Claude Code's own CLI (`claude -p`) to polish — no external API key needed."""
+    import subprocess as sp
+    full_prompt = f"{PROMPT_SYSTEM}\n\nPolish this: {prompt}\n\nReturn ONLY valid JSON, no other text."
+    try:
+        proc = sp.run(
+            ["claude", "-p", full_prompt, "--print"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if proc.returncode != 0:
+            return None
+        content = proc.stdout.strip()
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1]
+            content = content.rsplit("```", 1)[0]
+        return json.loads(content.strip())
+    except (sp.TimeoutExpired, json.JSONDecodeError, OSError, FileNotFoundError) as e:
+        print(f"⚠️  Claude fallback error: {e}", file=sys.stderr)
+        return None
 
 
 # ── Terminal Rendering ─────────────────────────────────────────────
@@ -304,6 +324,16 @@ def get_prompt(args) -> str:
     return "\n".join(lines).strip()
 
 
+def _get_polish(prompt: str, timeout: float = 30) -> Optional[dict]:
+    """Try API key first, fall back to `claude -p` if available. Returns parsed data dict or None."""
+    api_key, base_url, model = get_api_config()
+    if api_key:
+        data = call_llm(prompt, api_key, base_url, model, timeout=timeout)
+        if data:
+            return data
+    return call_claude(prompt, timeout=timeout)
+
+
 def run_hook(args) -> int:
     """JSON çıktı modu: harness adapter'ları için. Her zaman exit 0, fail-open."""
     if not args.file and not args.prompt and sys.stdin.isatty():
@@ -317,13 +347,8 @@ def run_hook(args) -> int:
         print(json.dumps({"revised": None}))
         return 0
 
-    api_key, base_url, model = get_api_config()
-    if not api_key:
-        print(json.dumps({"revised": None}))
-        return 0
-
     timeout = float(os.environ.get("POLISH_TIMEOUT", "15"))
-    data = call_llm(prompt, api_key, base_url, model, timeout=timeout)
+    data = _get_polish(prompt, timeout=timeout)
     if not data:
         print(json.dumps({"revised": None}))
         return 0
@@ -374,15 +399,12 @@ def run() -> int:
         print(prompt)
         return 0
 
-    api_key, base_url, model = get_api_config()
-    if not api_key:
-        print("⚠️  API key bulunamadı. `polish --setup` ile yapılandır.", file=sys.stderr)
-        print("   Key almak için: https://openrouter.ai/keys", file=sys.stderr)
-        return 1
-
-    data = call_llm(prompt, api_key, base_url, model)
+    data = _get_polish(prompt)
     if not data:
-        print("⚠️  Prompt iyileştirilemedi. Orijinal kullanılıyor.", file=sys.stderr)
+        msg = "⚠️  Prompt iyileştirilemedi. Orijinal kullanılıyor."
+        if not get_api_config()[0]:
+            msg += " API key yoksa `claude -p` deneniyor — Claude Code CLI kurulu değil veya auth yok."
+        print(msg, file=sys.stderr)
         print(prompt)
         return 0
 

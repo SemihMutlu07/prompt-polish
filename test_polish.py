@@ -33,9 +33,10 @@ long = "x" * 5000
 r = run([long])
 assert r.returncode == 0 and r.stdout.strip() == long, r
 
-# key yok → exit 1, stderr'de setup önerisi, stdout boş
+# key yok + claude unavailable → exit 0, original stdout, uyarı (fallback çalıştı ama claude da auth'suz)
 r = run(["explain recursion please"])
-assert r.returncode == 1 and "--setup" in r.stderr and r.stdout == "", r
+assert r.returncode == 0 and r.stdout.strip() == "explain recursion please", r
+assert "Orijinal kullanılıyor" in r.stderr, r
 
 # geçersiz base_url → zarif degrade: orijinal stdout'a, exit 0 (traceback yok)
 env2 = {**ENV, "POLISH_API_KEY": "fake", "POLISH_BASE_URL": "not-a-url"}
